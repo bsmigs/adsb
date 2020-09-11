@@ -1,0 +1,21 @@
+from mpl_toolkits.basemap import Basemap
+import matplotlib.pyplot as plt
+
+QTH_LAT = 42.647690 # my home's latitude
+QTH_LON = -71.253783 # my home's longitude
+
+myLowerLon = -73.0
+myLowerLat = 41.5
+
+myUpperLon = -70
+myUpperLat = 44
+ 
+map = Basemap(llcrnrlon = myLowerLon, llcrnrlat = myLowerLat, urcrnrlon = myUpperLon, urcrnrlat = myUpperLat,
+                  resolution='i', projection='tmerc', lat_0=QTH_LAT, lon_0=QTH_LON)
+
+map.fillcontinents(color='coral',lake_color='aqua')
+map.drawmapboundary(fill_color='aqua')
+map.drawcoastlines()
+map.drawstates()
+map.drawrivers()
+plt.show()
