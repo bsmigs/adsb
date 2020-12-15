@@ -79,7 +79,7 @@ class ADSB:
             # heading (deg). (may not be available)
             heading = float(split_line[13]) 
         else:
-            heading = -1;
+            heading = 1000;
                         
         if (split_line[14]):
             # latitude (deg). (may not be available)
@@ -217,15 +217,15 @@ class ADSB:
         # if the last time we received an update from them
         # exceeds our max time limit to get an update
 
+        # just compute time once for all aircraft
+        curr_time = time.mktime( datetime.datetime.now().timetuple() )
         for key in list(self.my_stored_data.keys()):
-            
             
             #print(curr_time, self.my_stored_data[key]['last_observed'], curr_time - self.my_stored_data[key]['last_observed'])
             
-            curr_time = time.mktime( datetime.datetime.now().timetuple() )
             if (curr_time - self.my_stored_data[key]['last_observed'] > MAX_TIME_UNOBSERVED):
                 
-                print("deleted an aircraft, time last seen was = ", self.my_stored_data[key]['last_observed'])
+                print("deleted aircraft", key,", time last seen was = ", self.my_stored_data[key]['last_observed'])
                 
                 del self.my_flight_tuple[key]
                 del self.my_stored_data[key]
