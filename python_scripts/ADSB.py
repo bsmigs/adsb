@@ -21,13 +21,18 @@ class ADSB:
                  QTH_ALT): 
         self.my_flight_tuple         = {}
         self.my_stored_data          = {}
+        self.total_num_aircraft      = 0
+        self.max_range_seen          = 0
         self.qth_lla                 = np.array([QTH_LAT, QTH_LON, QTH_ALT])
         self.qth_ecef                = ADSB.GetECEFPositionVectors(self.qth_lla)
         self.color_dict              = {}
         self.global_color_dict       = {'unused':ADSB.colors_for_plots(), 'used':[]}
 
     def get_num_aircraft(self):
-        return len(self.my_flight_tuple)
+        if (len(self.my_flight_tuple) > self.total_num_aircraft):
+            self.total_num_aircraft = len(self.my_flight_tuple)
+            ts = datetime.datetime.now()
+            #print("time = ",ts,"; Number of distinct aircraft seen = ", self.total_num_aircraft)
     
     def get_lat(self):
         return self.qth_lla[0]
@@ -171,10 +176,9 @@ class ADSB:
 
 
     def update_flight_tuple(self, 
-                            split_line):
-                            
-        msg_type, hex_addr, data = self.parse_new_data(split_line)
-            
+                            msg_type, 
+                            hex_addr, 
+                            data):
         if ( (msg_type == AIRCRAFT_ID_MSG) and (hex_addr in self.my_flight_tuple) ):
             values = self.my_flight_tuple[hex_addr]
             data = np.vstack((data, values)) # older values at the back
@@ -252,20 +256,20 @@ class ADSB:
             # split the string up from starting point to new line char point
             new_line = curr_line[start_idx:locations] 
             # split strings based on commas from file to see what kind of msg type
-            split_line = new_line.split(',') 
-
-            #print("start_idx = ",start_idx,", locations = ", locations,", len(curr_line) = ",len(curr_line))
-            #print(split_line)
+            split_line = new_line.split(',')
 
             if (len(split_line) != 22):
                 start_idx = locations + 1
                 continue
 
-            self.update_flight_tuple(split_line)
+            # parse the new line of data
+            msg_type, hex_addr, data = self.parse_new_data(split_line)
+            # update tuples with new info
+            self.update_flight_tuple(msg_type, hex_addr, data)
 
             start_idx = locations + 1
 
-        # now delete old data
+        # now delete old data, if applicable
         self.delete_aircraft()    
 
     def get_current_lats_lons(self):
@@ -283,6 +287,16 @@ class ADSB:
             #plot_colors.append(self.color_dict[ key ]) 
             
         return lats, lons
+    
+    def find_max_range_seen(self):
+        max_range = 0
+        for key in self.my_flight_tuple.keys():
+            data = self.my_stored_data[key]
+            range = data['max_range']
+            if (range > self.max_range_seen):
+                self.max_range_seen = range 
+                max_range_hex_addr = key
+                #print("ICAO address",max_range_hex_addr,"is farthest plane at range {:.1f}".format(self.max_range_seen/1000),"(km)")
     
     @staticmethod
     def convert_to_epoch(ymd,
