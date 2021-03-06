@@ -1,5 +1,6 @@
-from GetENUVelocities import *
-from GetHeadings import *
+from GetENUVelocities import GetENUVelocities
+from GetHeadings import GetHeadings
+from helper import *
 import numpy as np
 import numpy.matlib
 import random
@@ -7,11 +8,12 @@ import sys
 import time
 import datetime
 
+
 N_DIFF_TRACKS              = 100
 AIRCRAFT_ID_MSG            = 3
 NUM_MAX_DATA               = 50 # number of aircraft to cache
-MAX_TIME_UNOBSERVED        = 90 # (sec) amt of time elapsed before removing aircraft from cache
-EARTH_RADIUS               = 6366707.0 # (m)
+MAX_TIME_UNOBSERVED        = 150 # (sec) amt of time elapsed before removing aircraft from cache
+#EARTH_RADIUS               = 6366707.0 # (m)
 
 
 class ADSB:
@@ -20,28 +22,39 @@ class ADSB:
                  QTH_LON,
                  QTH_ALT): 
         self.my_flight_tuple         = {}
-        self.my_stored_data          = {}
         self.total_num_aircraft      = 0
         self.max_range_seen          = 0
         self.qth_lla                 = np.array([QTH_LAT, QTH_LON, QTH_ALT])
-        self.qth_ecef                = ADSB.GetECEFPositionVectors(self.qth_lla)
-        self.color_dict              = {}
-        self.global_color_dict       = {'unused':ADSB.colors_for_plots(), 'used':[]}
+        self.qth_ecef                = GetECEFPositionVectors(self.qth_lla)
 
     def get_num_aircraft(self):
         if (len(self.my_flight_tuple) > self.total_num_aircraft):
             self.total_num_aircraft = len(self.my_flight_tuple)
             ts = datetime.datetime.now()
-            #print("time = ",ts,"; Number of distinct aircraft seen = ", self.total_num_aircraft)
+            print("time = ",ts,"; Number of distinct aircraft seen = ", self.total_num_aircraft)
     
-    def get_lat(self):
+    def get_QTH_lat(self):
         return self.qth_lla[0]
     
-    def get_lon(self):
+    def get_QTH_lon(self):
         return self.qth_lla[1]
     
-    def get_alt(self):
-        return self.qth_lla[2]
+    def get_flight_tuple(self):
+        return self.my_flight_tuple
+    
+    def get_most_recent_quantity(self,
+                                 hex_addr,
+                                 quantity):
+        values = self.my_flight_tuple[hex_addr][quantity]
+        if (np.ndim(values) == 0):
+            # it's a scalar
+            return values
+        elif (np.ndim(values) == 1):
+            # it's a vector
+            return values[0]
+        elif (np.ndim(values) == 2):
+            # it's a 2D array
+            return values[0,...]
     
     def parse_new_data(self,
                        split_line):
@@ -51,193 +64,127 @@ class ADSB:
         
         #print(split_line)
         
+        # put rest of data into a tuple
+        data_tuple = {}
+        
         # grab the message type
-        msg_type = int(split_line[1]) 
+        msg_type = int(split_line[1])
+        data_tuple['msg_type'] = msg_type
     
         # unique hex address for current aircraft
         hex_addr = split_line[4] 
+        
+        if (split_line[5]):
+            # flightID: database flight record number
+            data_tuple['flight_ID'] = split_line[5]
+            
         # year-month-day
         ymd = split_line[6] 
         # hours-mins-sec
         hms = split_line[7] 
+        # convert date/time to epoch to better work with it
+        epoch = convert_to_epoch(ymd, hms)
+        data_tuple['last_observed'] = np.array(epoch)
 
-        if split_line[10]:
+        if (msg_type == 1 and split_line[10]):
             # callsign (may not be available)
-            callsign = split_line[10] 
-        else:
-            callsign = 'NaN'
+            data_tuple['callsign'] = split_line[10]
     
-        if split_line[11]:
-            # altitude (ft) (may not be available)
+        if (msg_type == 3):
+            # altitude (ft)
             alt = float(split_line[11]) 
-        else:
-            #print("No valid altitude")
-            alt = -1
+            # latitude (deg)
+            lat = float(split_line[14])
+            # longitude (deg)
+            lon = float(split_line[15])
+            data_tuple['lla'] = np.array([lat, lon, alt])
+            data_tuple['range'] = np.array(self.compute_range_from_QTH(data_tuple['lla'], self.qth_lla)) # (m)
     
-        if split_line[12]:
+        if (split_line[12]):
             # ground speed (knots). (may not be available)
-            ground_speed = float(split_line[12]) 
-        else:
-            ground_speed = 0
-
-        if (split_line[13]):
-            # heading (deg). (may not be available)
-            heading = float(split_line[13]) 
-        else:
-            heading = 1000;
-                        
-        if (split_line[14]):
-            # latitude (deg). (may not be available)
-            lat = float(split_line[14]) 
-        else:
-            lat = 1000
+            data_tuple['ground_speed'] = np.array(float(split_line[12]))
             
-        if (split_line[15]):
-            # longitude (deg). (may not be available)
-            lon = float(split_line[15]) 
-        else:
-            lon = 1000
+        if (split_line[13]):
+            # track of aircraft (not heading). Derived from
+            # the velocity E/W and velocity N/S
+            data_tuple['track'] = np.array(float(split_line[13]))
+            
+        if (split_line[16]):
+            # 64 ft resolution
+            data_tuple['vertical_rate'] = np.array(float(split_line[16]))
+            
+        if (split_line[19]):
+            # flag indicating if emergency code has been set
+            data_tuple['emergency'] = bool(split_line[19])
+            
+        if (split_line[20]):
+            # flag indicating transponder ident has been activated
+            data_tuple['spi_ident'] = bool(split_line)
             
         if (split_line[21]):
             # denotes if plane communicating it's on the gnd. (may not be available)
-            on_the_gnd = split_line[21]
-        else:
-            on_the_gnd = 'NULL' 
-
-        # convert date/time to epoch to better work with it
-        epoch = ADSB.convert_to_epoch(ymd, hms)
-    
-        # gather needed data into a list
-        data = np.array([epoch, lat, lon, alt])
+            data_tuple['on_the_gnd'] = split_line[21]
         
-        return msg_type, hex_addr, data
-
-    def initialize_stored_data(self,
-                               hex_addr, 
-                               data):
-        max_alt                       = data[3]
-        aircraft_lla                  = data[1:4]
-        aircraft_ecef                 = ADSB.GetECEFPositionVectors(aircraft_lla)
-        aircraft_enu                  = ADSB.GetENUCoords(aircraft_lla, self.qth_lla) # (m)
-        curr_range                    = float(np.linalg.norm(aircraft_enu))
-        epoch                         = data[0]
-        stored_data                   = {'first_observed':epoch, 'last_observed':epoch, 'max_range':curr_range, 'max_altitude':max_alt, 'max_speed':0}
-    
-        self.my_stored_data.update( {hex_addr : stored_data} )
-        
-        # assign the next available plot color to the 
-        # aircraft and move that (r,g,b) tuple to the
-        # "used" category
-        curr_color                    = self.global_color_dict['unused'][0]
-        self.color_dict[ hex_addr ]   = curr_color
-        self.global_color_dict['used'].append(curr_color)
-
-    def update_stored_data(self,
-                           hex_addr, 
-                           data):
-                           
-        # if we have at least 2 elements, we can begin
-        # computing other quantities from the 2 most recent
-        # data entries
-
-        # convert aircraft coords to ENU centered at my QTH
-        aircraft_lla = data[0,1:4]
-        aircraft_enu = ADSB.GetENUCoords(aircraft_lla, self.qth_lla) # (m)
-        
-        # get ENU velocities
-        #times = data[0:1+1, 0]
         #aircraft_velocities = GetENUVelocities(times, aircraft_enu)
-        aircraft_velocities = np.mat([100, 100, 100])
-    
-        # get speeds
-        enu_speeds = np.linalg.norm(aircraft_velocities, axis=1)
-    
-        # get headings
-        #headings = GetHeadings(self.qth_enu, aircraft_enu);
+        aircraft_velocities = np.array([100, 100, 100])
+        data_tuple['speed'] = np.array(0)
         
-        # current range of aircraft to my QTH
-        curr_range = float(np.linalg.norm(aircraft_enu))
+        return hex_addr, data_tuple
     
-        stored_data = self.my_stored_data[ hex_addr ]
-        if (curr_range > stored_data['max_range']):
-            stored_data['max_range'] = curr_range
-            
-        if (aircraft_lla[2] > stored_data['max_altitude']):
-            stored_data['max_altitude'] = aircraft_lla[2]
-
-        if (enu_speeds[0] > stored_data['max_speed']):
-            stored_data['max_speed'] = enu_speeds[0]
-
-        most_recent_observed_time = data[0,0]
-        stored_data['last_observed'] = most_recent_observed_time
-                    
-        # re-save data
-        self.my_stored_data[ hex_addr ] = stored_data
+    def update_data(self,
+                    hex_addr,
+                    data_tuple):
+        relevant_keys = ['lla', 'speed', 'ground_speed', 'range', 'track', 'last_observed']
+        
+        if ('callsign' in data_tuple):
+            self.my_flight_tuple[hex_addr]['callsign'] = data_tuple['callsign']
+        
+        for key in relevant_keys:
+            if (key in self.my_flight_tuple[hex_addr] and key in data_tuple):
+                if (np.size(self.my_flight_tuple[hex_addr][key]) > NUM_MAX_DATA):
+                    # pop off oldest element
+                    np.delete(self.my_flight_tuple[hex_addr][key], -1, 0)
+                
+                # add newest to the front
+                if (key == 'lla'):
+                    # lla is a 1 x3 row vector, so need to
+                    # vertical stack it
+                    self.my_flight_tuple[hex_addr][key] = np.vstack((data_tuple[key], self.my_flight_tuple[hex_addr][key]))
+                else:
+                    # these are scalars, so horizontal stack
+                    self.my_flight_tuple[hex_addr][key] = np.hstack((data_tuple[key], self.my_flight_tuple[hex_addr][key]))
 
 
     def update_flight_tuple(self, 
-                            msg_type, 
                             hex_addr, 
-                            data):
-        if ( (msg_type == AIRCRAFT_ID_MSG) and (hex_addr in self.my_flight_tuple) ):
-            values = self.my_flight_tuple[hex_addr]
-            data = np.vstack((data, values)) # older values at the back
-
-            # if we have at least 2 elements, we can begin
-            # computing other quantities from the 2 most recent
-            # data entries
-            if (len(data) > 1):
-                self.update_stored_data(hex_addr, data)
-
-            # update until total amount of data equals what's
-            # specified. Otherwise, pop off earliest entry and
-            # move everything up accordingly. (FIFO)
-            if (len(data) > NUM_MAX_DATA):
-                data = np.delete(data, -1, 0) # pop off the oldest element
-                
-            # update the data entries
-            self.my_flight_tuple[hex_addr] = data
-                
-        elif ( (msg_type == AIRCRAFT_ID_MSG) and (hex_addr not in self.my_flight_tuple) ):
+                            data_tuple):
+        if (hex_addr in self.my_flight_tuple):
+            # want to update data_tuple fields bearing 
+            # in mind that we will eliminate entries when 
+            # we have exceeded the maximum cached number 
+            # of elements
+            self.update_data(hex_addr, data_tuple)
+        else:
             # if current aircraft not yet observed, store the 
             # first time it was seen
-            self.initialize_stored_data(hex_addr, data)
-            
-            # update the data entries
-            self.my_flight_tuple[hex_addr] = data
-            
-        elif ( (msg_type != AIRCRAFT_ID_MSG) and (hex_addr in self.my_flight_tuple) ):
-            # if we are still getting updates but those updates do not
-            # include the position info to perform calculations, then
-            # just update the last time it was seen so the plane
-            # does not go out of scope
-            stored_data = self.my_stored_data[hex_addr]
-            curr_time = time.mktime( datetime.datetime.now().timetuple() )
-            stored_data['last_observed'] = curr_time
-            self.my_stored_data[hex_addr] = stored_data
-            
+            data_tuple['first_observed'] = data_tuple['last_observed']
+            self.my_flight_tuple[hex_addr] = data_tuple
+
     def delete_aircraft(self):
         # loop through all the aircrafts we have and ask
         # if the last time we received an update from them
         # exceeds our max time limit to get an update
+        if (np.size(self.my_flight_tuple) == 0):
+            return
 
         # just compute time once for all aircraft
         curr_time = time.mktime( datetime.datetime.now().timetuple() )
-        for key in list(self.my_stored_data.keys()):
-            
-            #print(curr_time, self.my_stored_data[key]['last_observed'], curr_time - self.my_stored_data[key]['last_observed'])
-            
-            if (curr_time - self.my_stored_data[key]['last_observed'] > MAX_TIME_UNOBSERVED):
+        for hex_addr in list(self.my_flight_tuple.keys()):
+            if (curr_time - self.get_most_recent_quantity(hex_addr, 'last_observed') > MAX_TIME_UNOBSERVED):
+                delete_str = convert_epoch_to_datestr(self.get_most_recent_quantity(hex_addr, 'last_observed'))
+                #print("deleted aircraft", hex_addr,", time last seen was = ", delete_str)
                 
-                print("deleted aircraft", key,", time last seen was = ", self.my_stored_data[key]['last_observed'])
-                
-                del self.my_flight_tuple[key]
-                del self.my_stored_data[key]
-            
-                # make the current color available again
-                curr_color = self.color_dict[key]
-                self.global_color_dict['used'].remove( curr_color )
-                self.global_color_dict['unused'].append( curr_color )
+                del self.my_flight_tuple[hex_addr]
             
     def process_new_messages(self, curr_line):
         # sometimes messages arrive at the same
@@ -263,14 +210,15 @@ class ADSB:
                 continue
 
             # parse the new line of data
-            msg_type, hex_addr, data = self.parse_new_data(split_line)
+            hex_addr, data_tuple = self.parse_new_data(split_line)
+            
             # update tuples with new info
-            self.update_flight_tuple(msg_type, hex_addr, data)
+            self.update_flight_tuple(hex_addr, data_tuple)
 
             start_idx = locations + 1
 
         # now delete old data, if applicable
-        self.delete_aircraft()    
+        self.delete_aircraft()
 
     def get_current_lats_lons(self):
         # start logic to plot here, I think
@@ -278,111 +226,18 @@ class ADSB:
         lons = np.array([]) #[]
         plot_colors = []
         for key in self.my_flight_tuple:
-            curr_data = np.array(self.my_flight_tuple[ key ])        
+            curr_data = np.array(self.my_flight_tuple[key]['data'])        
             lats = np.append(lats, curr_data[...,1])
             lons = np.append(lons, curr_data[...,2])
-            
-            #lats.append( curr_data[:,1] )
-            #lons.append( curr_data[:,2] )
-            #plot_colors.append(self.color_dict[ key ]) 
             
         return lats, lons
     
     def find_max_range_seen(self):
-        max_range = 0
         for key in self.my_flight_tuple.keys():
-            data = self.my_stored_data[key]
-            range = data['max_range']
+            range = self.get_most_recent_quantity(key, 'range')
             if (range > self.max_range_seen):
                 self.max_range_seen = range 
                 max_range_hex_addr = key
-                #print("ICAO address",max_range_hex_addr,"is farthest plane at range {:.1f}".format(self.max_range_seen/1000),"(km)")
-    
-    @staticmethod
-    def convert_to_epoch(ymd,
-                         hms):
-        # ymd = year, month, day
-        # hms = hour, minute, second
-        # convert date/time to epoch to better work with it
-        date_time = str(ymd) + " " + str(hms)
-        
-        #print(date_time)
-        
-        pattern = '%Y/%m/%d %H:%M:%S.%f'
-        epoch = time.mktime( time.strptime(date_time, pattern) )
-        # get fractional seconds contribution to epoch
-        epoch = epoch + float('.' + hms.split('.')[1])
-
-        return epoch
-    
-    def GetECEFPositionVectors(lla):
-        #phi = np.subtract(90, lats)
-        #phi = np.deg2rad(phi)
-        
-        lats = np.deg2rad(lla[...,0])
-        lons = np.deg2rad(lla[...,1])
-
-        sinlat = np.sin(lats)
-        coslat = np.cos(lats)
-        sinlon = np.sin(lons)
-        coslon = np.cos(lons)
-        
-        angle_vec = np.zeros(np.shape(lla))
-        angle_vec[...,0] = np.multiply(coslat, coslon)
-        angle_vec[...,1] = np.multiply(coslat, sinlon)
-        angle_vec[...,2] = sinlat
-        
-        # need to repeat this 3 times (for 3 elements
-        # of angle_vec
-        radius_vec = EARTH_RADIUS*np.ones(np.shape(angle_vec))
-        alts = lla[...,[2]]
-        radius_vec = radius_vec + alts
-        ecef_vec = np.multiply(radius_vec, angle_vec)
-        
-        return ecef_vec
-    
-    def GetENUCoords(aircraft_lla, qth_lla):
-        qth_lat = np.deg2rad(qth_lla[0])
-        qth_lon = np.deg2rad(qth_lla[1])
-        
-        coslat = np.cos(qth_lat)
-        sinlat = np.sin(qth_lat)
-        coslon = np.cos(qth_lon)
-        sinlon = np.sin(qth_lon)
-        
-        rotation_mat = np.array([[-sinlon, coslon, 0], [-sinlat*coslon, -sinlat*sinlon, coslat], [coslat*coslon, coslat*sinlon, sinlat]])
-        
-        qth_ecef = ADSB.GetECEFPositionVectors(qth_lla)
-        aircraft_ecef = ADSB.GetECEFPositionVectors(aircraft_lla)
-        ecef_diff = aircraft_ecef - qth_ecef
-        enu_vec = np.matmul(rotation_mat, ecef_diff)
-        
-        return enu_vec
-    
-    def colors_for_plots():
-        ret = []
-    
-        r = int(random.random() * 256)
-        g = int(random.random() * 256)
-        b = int(random.random() * 256)
-        step = 256 / N_DIFF_TRACKS
-    
-        for ii in range(N_DIFF_TRACKS):
-            r += step
-            g += step
-            b += step
-    
-            r = int(r) % 256
-            g = int(g) % 256
-            b = int(b) % 256
-        
-            r0 = r/256.
-            g0 = g/256.
-            b0 = b/256.
-    
-            ret.append( (r0,g0,b0) ) 
-        
-        return ret
-        
+                print("ICAO address",max_range_hex_addr,"is farthest plane at range {:.1f}".format(self.max_range_seen/1000),"(km)")
 
 
