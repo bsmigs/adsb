@@ -1,16 +1,7 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Dec 19 18:17:10 2020
-
-@author: bsmig
-"""
-
 import time
 import datetime
 import numpy as np
-
-EARTH_RADIUS               = 6366707.0 # (m)
-
+from constants import *
 
 def convert_to_epoch(ymd,
                      hms):
@@ -29,10 +20,7 @@ def convert_to_epoch(ymd,
     return epoch
 
 def convert_epoch_to_datestr(epoch_time):
-    my_time = datetime.datetime.fromtimestamp(epoch_time)
-    my_time_str = time.strftime("%Y-%m-%d %H:%M:%S", my_time.timetuple())
-    
-    return my_time_str
+    return datetime.datetime.fromtimestamp(epoch_time).strftime("%Y-%m-%d %H:%M:%S.%f")
 
 def GetECEFPositionVectors(lla):
     #phi = np.subtract(90, lats)
