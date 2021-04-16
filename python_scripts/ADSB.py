@@ -97,9 +97,8 @@ class ADSB:
             # convert date/time to epoch to better work with it
             epoch = convert_to_epoch(ymd, hms)
             data_tuple['last_observed'] = np.array(epoch)
-        
             # altitude (ft)
-            alt = float(split_line[11]) 
+            alt = float(split_line[11])
             # latitude (deg)
             lat = float(split_line[14])
             # longitude (deg)

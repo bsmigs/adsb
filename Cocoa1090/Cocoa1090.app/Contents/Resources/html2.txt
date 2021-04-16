@@ -1,8 +1,0 @@
-var latlng2 = new google.maps.LatLng(40.1, -77.1);
-
-	marker2 = new google.maps.Marker({
-		map:map,
-		draggable:true,
-		position: latlng2,
-		title:"title"
-		});
