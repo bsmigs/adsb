@@ -1,5 +1,30 @@
 Readme
 
+# Installation of rtl-sdr
+
+You can obtain the latest repo commit from:
+
+git clone git://git.osmocom.org/rtl-sdr.git
+
+and navigate to https://osmocom.org/projects/rtl-sdr/wiki
+
+When building rtl-sdr I had some problems running the rtl_test executable
+located in the build/src directory of the rtl-sdr repo. I think this resulted
+from needing to copy the rtl-sdr.rules file to the /etc/udev/rules.d directory
+and then rebooting
+
+Another thing I did (which may or may not have helped) was blacklisted native 
+Raspbian kernels for the rtl-sdr dongle. To help with this problem, I created
+a file called /etc/modprobe.d/rtl-sdr.conf and added the lines
+- blacklist dvb_usb_rtl28xxu
+- blacklist rtl2832
+- blacklist rtl2830
+- blacklist rtl2838
+
+(The rtl2838 is the model I currently have)
+
+After doing these steps (and rebooting the RPi appropriately) everything worked
+
 # Installation of dump1090
 
 There are 2 variants I have seen. 
