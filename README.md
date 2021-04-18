@@ -8,7 +8,7 @@ There are 2 variants I have seen.
 
 Once obtained and if running on a Linux platform or Raspberry pi, open your /etc/rc.local file and type:
 
-`/home/pi/dump1090/dump1090 --aggressive --interactive --net --net-sbs-port 30003 &`
+`/path/to/dump1090 --aggressive --interactive --net --net-sbs-port 30003 &`
 
 This will assure it runs on startup
 
