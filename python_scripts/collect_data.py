@@ -73,9 +73,7 @@ def main():
             
             # check to see if we have a valid string or not
             if(len(split_line) == LEN_OF_VALID_STRING):
-                # write to file if it's at the right time
                 current_epoch_time = datetime.datetime.now().timestamp()
-                
                 # open the file for writing when it's the right time
                 if ((current_epoch_time >= file_writing_start_time and current_epoch_time <= file_writing_stop_time) and myfile == -1):
                     filename = create_filename()
