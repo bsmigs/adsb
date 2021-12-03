@@ -31,6 +31,8 @@ There are 2 variants I have seen.
 - Malcolm Robb's [repo](https://github.com/MalcolmRobb/dump1090)
 - Antirez's [repo](https://github.com/antirez/dump1090)
 
+I chose Malcolm Robb's distribution since it seemed to provide more info. ONE IMPORTANT ISSUE: trying to compile the code failed due to a multiple definitions error. In order to fix this I had to add -fcommon flag to the CFLAGS portion of the Makefile, after the pkg-configs phrase
+
 Once obtained and if running on a Linux platform or Raspberry pi, open your /etc/rc.local file and type:
 
 `/path/to/dump1090 --aggressive --interactive --net --net-sbs-port 30003 &`
