@@ -226,27 +226,8 @@ class ADSB:
             
         # return the hex address of the updated aircraft
         return updated_hex_addr
-    
-    def get_current_lats_lons(self):
-        
-        # start logic to plot here
-        all_lats = np.array([])
-        all_lons = np.array([])
-        plot_colors = []
-        
-        #print(self.my_flight_tuple.keys())
-        
-        for hex_addr in self.my_flight_tuple:
-            if ('lla' in self.my_flight_tuple[hex_addr].keys()):
-                curr_data = np.array(self.my_flight_tuple[hex_addr]['lla'])
-                
-                curr_lats = curr_data[...,0]
-                curr_lons = curr_data[...,1]
-                
-                all_lats = np.append(all_lats, curr_lats)
-                all_lons = np.append(all_lons, curr_lons)
-                
-    def get_current_lats_lons_2(self):
+                    
+    def get_flight_lats_lons(self):
         
         # start logic to plot here
         lats = {}
@@ -263,8 +244,26 @@ class ADSB:
                 else:
                     lats[hex_addr] = lla_data[...,0]
                     lons[hex_addr] = lla_data[...,1]
-                
-                
+
+    def get_specific_flight_lats_lons(self,
+                                      hex_addrs):
+        
+        # start logic to plot here
+        lats = {}
+        lons = {}
+        plot_colors = []
+        
+        for hex_addr in hex_addrs:
+            if (hex_addr in self.my_flight_tuple):
+                if ('lla' in self.my_flight_tuple[hex_addr].keys()):
+                    lla_data = self.my_flight_tuple[hex_addr]['lla']
+                    if (np.size(lla_data[...,0]) == 1 and np.size(lla_data[...,1]) == 1):
+                        lats[hex_addr] = [lla_data[...,0]]
+                        lons[hex_addr] = [lla_data[...,1]]
+                    else:
+                        lats[hex_addr] = lla_data[...,0]
+                        lons[hex_addr] = lla_data[...,1]
+                        
         return lats, lons
 
     def find_max_range_seen(self):

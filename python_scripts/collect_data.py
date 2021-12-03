@@ -47,7 +47,8 @@ def plot_updates(thread_id):
     old_texts = []
     while (True):
         # get current lats/lons
-        lats, lons = adsb.get_current_lats_lons_2()
+        lats, lons = adsb.get_flight_lats_lons()
+        #lats, lons = adsb.get_specific_flight_lats_lons([])
         
         if (len(old_texts) > 0):
             for text in old_texts:
